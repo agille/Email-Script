@@ -1,35 +1,56 @@
 # Residual Email Script
-# Alexander Gille 2019
+# Alexander Gille 2020
 
 import csv
 import datetime
-import sys
+import dateutil.relativedelta
+import os
 
 import smtplib
 import yagmail
 
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import *
 from tkinter import simpledialog
+from tkinter import filedialog
 
 root = tk.Tk()
 root.withdraw()
 
-password = simpledialog.askstring("Password", "Enter password:", show='*')
+#Prompt to enter users email credentials
+your_email = simpledialog.askstring("Email", "Enter your Email")
+your_password = simpledialog.askstring("Password", "Enter your Password", show="*")
 
+#Date that will be used in the email subject line and body. Can be adjusted depending on month sending.
+#Ex. If current month is June and (months-1), Email will display May.
 current_date = datetime.datetime.now()
+one_month_prior = current_date+dateutil.relativedelta.relativedelta(months=-1)
 
-subject_line = f'Pineapple Payments {current_date.strftime("%B")} {current_date.year} Residual File'
+#Subject line for the email
+subject_line = f'Pineapple Payments {one_month_prior.strftime("%B")} {one_month_prior.year} Residual File'
 
 LNAMES = []
 FNAMES = []
 EMAILS = []
 FILES = []
 
-yag = yagmail.SMTP('agille@pineapplepayments.com', password)
+yag = yagmail.SMTP(your_email, your_password)
 
+#user prompt to select csv file containing recipient name, email, and file name
 email_data = filedialog.askopenfilename(filetypes=[('.csv', '.csv')],
                                         title='Select the Email Data file')
+
+#user prompt to select text file containing the body of the email
+txt_file = filedialog.askopenfilename(filetypes=[('.txt', '.txt')],
+                                      title='Select the EMail Template')
+
+#user prompt to select the folder containing the files read in from the csv
+dir_name = filedialog.askdirectory(title='Select Folder Containing Reports')
+os.chdir(dir_name)
+
+
+class EmailAttachmentNotFoundException(Exception):
+    pass
 
 
 def send_email():
@@ -38,62 +59,57 @@ def send_email():
         csv_reader = csv.reader(csv_file, delimiter=',')
         line_count = 0
 
-        for row in csv_reader:
-            last_name = row[0]
-            first_name = row[1]
-            email = row[2]
-            file = row[3]
+        try:
+            for row in csv_reader:
+                last_name = row[0]
+                first_name = row[1]
+                email = row[2]
+                file = row[3]
 
-            LNAMES.append(last_name)
-            FNAMES.append(first_name)
-            EMAILS.append(email)
-            FILES.append(file)
+                if not os.path.isfile(file):
+                    raise EmailAttachmentNotFoundException('The attachment file "{}" was not found in the directory'
+                                                           .format(file))
 
-            line_count += 1
+                LNAMES.append(last_name)
+                FNAMES.append(first_name)
+                EMAILS.append(email)
+                FILES.append(file)
+
+                line_count += 1
+
+        except EmailAttachmentNotFoundException as a:
+            print(str(a))
+            input('Press Enter to exit')
+            sys.exit(1)
+
+    with open(txt_file) as f:
+        email_template = f.read()
 
     try:
         for first_name, last_name, email, file in zip(FNAMES, LNAMES, EMAILS, FILES):
-            txt = f'Dear {first_name} {last_name},\n\n'\
-                  'This email is a test of the python script that will be used for sending residual files.\n\n'\
-                  'Thank you,\n\n'\
-                  'Alex Gille\n\n' \
-                  '<font face = "sans-serif">'\
-                  '<p style="color:rgb(7, 55, 99);">'\
-                  '<b>Pineapple Payments</b>\n'\
-                  '11 Stanwix Street, Suite 1202\n'\
-                  'Pittsburgh, PA 15222\n'\
-                  'www.pineapplepayments.com'\
-                  '</p>'\
-                  '</font>'\
-                  '<img src="https://drive.google.com/uc?export=view&id=1xjVA6vA1JZfLmkEq1KonISKxbrmUudH9"'\
-                  'width="250" height="150"></img>'\
-                  '<font face = "verdana">'\
-                  '<p style="color:rgb(102, 102, 102);">'\
-                  '<b>Disclaimer</b>\n'\
-                  '<small>'\
-                  'The information contained in this communication from '\
-                  'the sender is confidential. It is intended solely for use '\
-                  'by the recipient and others authorized to receive it. If '\
-                  'you are not the recipient, you are hereby notified that '\
-                  'any disclosure, copying, distribution or taking action in '\
-                  'relation of the contents of this information is strictly '\
-                  'prohibited and may be unlawful.'\
-                  '</font>'\
-                  '</p>'\
-                  '</small>'
+            txt = email_template.format(first_name=first_name,
+                                        last_name=last_name,
+                                        month=one_month_prior.strftime("%B"),
+                                        year=one_month_prior.year)
 
             yag.send(to=email,
                      subject=subject_line,
                      contents=[txt, file])
 
-            print("Email(s) sent successfully")
-            input("Press Enter to exit")
-            sys.exit(1)
-
+    #Lets user know when an authentication error relating to the email credentials occurs
     except smtplib.SMTPAuthenticationError:
-        print("Incorrect Email password entered")
-        input("Press Enter to exit")
+        print('Incorrect Email or Password entered')
+        input('Press Enter to exit')
         sys.exit(1)
 
+#Lets user know the emails were sent successfully
+try:
+    send_email()
+    print('Email(s) sent successfully')
+    input('Press Enter to exit')
+    sys.exit(1)
 
-send_email()
+#If an error occurs, displace the exception as well as the files that were read in for debugging purposes
+except Exception as e:
+    print(e, FILES)
+
