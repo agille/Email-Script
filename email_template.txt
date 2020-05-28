@@ -1,6 +1,6 @@
-Dear {first_name} {last_name},
+Dear {first_name},
 
-This email is a test of the python script that will be used for sending residual files.
+This is an example of a test email that would contain the residual report for {month} {year}. 
 
 Thank you,
 
